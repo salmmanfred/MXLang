@@ -3,6 +3,7 @@ mod parser;
 mod traits;
 #[allow(special_module_name)]
 mod lib;
+mod compile;
 
 extern crate pest_derive;
 
@@ -17,10 +18,11 @@ fn main() {
 
 
     parser::execute::execute_code();
+    compile::jit::test_compile();
 
     //TODO: libraries import!("file.file") (done)
     //TODO: standard library (WUP)
-    
+
     //TODO: function(function()) (not a priority)
     //TODO: var = intfun!() (done)
     //TODO: APPEND strings so string += string creates string (done)
