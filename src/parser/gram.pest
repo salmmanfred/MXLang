@@ -1,0 +1,67 @@
+program = _{ SOI ~ NEWLINE* ~ (stmt ~ NEWLINE+) * ~ stmt? ~ EOI }
+
+stmt = _{
+    var
+    |runfun
+    |intfun
+    |ifs
+    |string
+}
+
+expr = {
+    string
+    |int
+    |math
+    |fun
+    |array
+    |getarr
+    |runfun
+    |intfun
+    |name   
+}
+math = {
+    unary
+    |bin
+}
+var = {
+    asgn
+}
+
+string = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
+
+
+
+
+
+//args = {(expr~",")*}
+args = _{expr~(","|")")}
+intfun = {name ~ "!(" ~ args*}
+runfun = {name ~ "(" ~ args*}
+args_nonem = {(expr~(","|")"))*}
+fun = {"(" ~ args_nonem ~ encol}
+
+encol = _{"{"~NEWLINE ~ NEWLINE* ~ (stmt ~ NEWLINE+) * ~"}"}
+ifs = {"if " ~ expr ~ if_op ~ expr ~ encol }
+if_op = {">=" | "<=" | "==" | "!="}
+
+Term = _{int | "(" ~ math ~ ")" }
+unary = { op ~ Term }
+bin = { Term ~ (op ~ Term)* }
+name = @{(ASCII_ALPHA|"_")*}
+asgn = {name ~ op ~ expr}
+int = @{ASCII_DIGIT+}
+
+args_array = _{expr~(","|"]")}
+args_nonem_array = {(expr~(","|"]"))*}
+//encol_array = _{"]\n" ~ "\n"*}
+array = {"["~args_nonem_array}
+
+getarr = {name~"["~expr~"]"}
+
+op = {"+="|"-="|"+" | "-" | "="}
+
+alpha = { 'a'..'z' | 'A'..'Z' }
+digit = { '0'..'9' }
+
+WHITESPACE = _{ " " | "\t" }
+EOF = _{ EOI  }

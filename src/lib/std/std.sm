@@ -1,0 +1,3 @@
+has_std = (){
+    println!("Has standard library")
+}
