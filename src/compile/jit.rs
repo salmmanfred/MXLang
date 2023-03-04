@@ -1,13 +1,13 @@
 use std::mem;
 
 use crate::parser::ast;
-use cranelift::codegen::ir::UserFuncName;
+use cranelift::codegen::ir::{UserFuncName, FuncRef};
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift::codegen::{
     ir::{types::I64, AbiParam, Function, Signature},
     isa::CallConv,
 };
-use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags};
+use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags, EntityRef};
 
 use cranelift::codegen::{isa, settings, Context};
 use cranelift_jit::{JITModule, JITBuilder};
@@ -15,8 +15,11 @@ use target_lexicon::Triple;
 use cranelift_module::{DataContext, Linkage, Module};
 use core::fmt::write;
 
-fn pr(t: i64){
-    println!("{t}");
+fn pr(t: i64,b:i64,c:i64,d:i64){
+    
+        println!("{t},{},{},{}",b,c,d);
+    //println!("{:?}",*t);
+    
 }
 
 pub fn test_compile(){
@@ -37,6 +40,7 @@ pub fn test_compile(){
 
     sig.returns.push(AbiParam::new(I64));
     
+    
     let mut func = Function::with_name_signature(UserFuncName::default(), sig);
     let mut func_ctx = FunctionBuilderContext::new();
     let mut builder = FunctionBuilder::new(&mut func, &mut func_ctx);
@@ -51,7 +55,12 @@ pub fn test_compile(){
     let (write_sig, write_address) = {
         let mut write_sig = Signature::new(CallConv::SystemV);
         write_sig.params.push(AbiParam::new(types::I64));
-        write_sig.returns.push(AbiParam::new(pointer_type));
+        write_sig.params.push(AbiParam::new(types::I64));
+        write_sig.params.push(AbiParam::new(types::I64));
+        write_sig.params.push(AbiParam::new(types::I64));
+
+
+       // write_sig.returns.push(AbiParam::new(pointer_type));
         let write_sig = builder.import_signature(write_sig);
     
         let write_address = pr as *const () as i64;
@@ -59,10 +68,11 @@ pub fn test_compile(){
         (write_sig, write_address)
     };
 
+   
     
     
+
     
-    let mem_flags = MemFlags::new();
 
     
     let arg = builder.block_params(block)[0];
@@ -71,12 +81,14 @@ pub fn test_compile(){
     let plus_one = builder.ins().iadd_imm(arg, 1);
     let plus_two = builder.ins().iadd_imm(arg, 2);
     
+    
     let plus_three = builder.ins().iadd(plus_one,plus_two);
    
 
     
-    let cell_value = builder.ins().load(I64, mem_flags, plus_three, 0);
-    builder.ins().call_indirect(write_sig,write_address,&[plus_three]);
+    
+   
+    builder.ins().call_indirect(write_sig,write_address,&[plus_three,plus_three,plus_three,plus_three]);
    // builder.ins().store(mem_flags, cell_value, plus_three, 0);
 
     builder.ins().return_(&[plus_three]);
@@ -104,7 +116,7 @@ pub fn test_compile(){
         let code_fn: unsafe extern "sysv64" fn(usize) -> usize =
             std::mem::transmute(buffer.as_ptr());
 
-        code_fn(50)
+        code_fn(55)
     };
 
     println!("out: {}", x);
