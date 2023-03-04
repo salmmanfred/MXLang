@@ -15,7 +15,7 @@ use target_lexicon::Triple;
 use cranelift_module::{DataContext, Linkage, Module};
 use core::fmt::write;
 
-fn pr(t: i64,b:i64,c:i64,d:i64){
+extern "sysv64" fn pr(t: i64,b:i64,c:i64,d:i64){
     
         println!("{t},{},{},{}",b,c,d);
     //println!("{:?}",*t);
