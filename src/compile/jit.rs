@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::mem;
 
-use crate::parser::ast;
+use crate::parser::ast::{self, Node};
 use cranelift::codegen::ir::{UserFuncName, FuncRef, DataFlowGraph};
 use cranelift::codegen::packed_option::ReservedValue;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -8,7 +9,7 @@ use cranelift::codegen::{
     ir::{types::I64, AbiParam, Function, Signature},
     isa::CallConv,
 };
-use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags, EntityRef, Configurable, Type};
+use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags, EntityRef, Configurable, Type, Variable};
 
 use cranelift::codegen::{isa, settings, Context};
 use cranelift_jit::{JITModule, JITBuilder};
@@ -139,7 +140,6 @@ pub fn test_compile(){
     ctx.func.signature = sig;
     let mut func = Function::with_name_signature(UserFuncName::default(), ctx.func.signature.clone());
    // let mut func_ctx = FunctionBuilderContext::new();
-    let func2ref = module.declare_func_in_func(id2, &mut func);
    
     let mut builder = FunctionBuilder::new(&mut func, &mut builder_ctx);
     let block = builder.create_block();
@@ -189,18 +189,18 @@ pub fn test_compile(){
     let pl4 = l.inst_results(plus_four);
     println!("d3");*/
     builder.ins().call_indirect(write_sig,write_address,&[plus_three,arg]);
+    let func2ref = module.declare_func_in_func(id2, &mut builder.func);
 
     let a = builder.ins().call(func2ref, &[plus_three,plus_two]);
-    func2.dfg.append_result(a, I64);
-    func2.dfg.append_result(a, I64);
+    
 
 
-    println!("{:#?}",func2.dfg.has_results(a));
+    println!("{:#?}",builder.func.dfg.has_results(a));
 
-    let returna = func2.dfg.inst_results(a);
+    let returna = builder.func.dfg.inst_results(a)[0];
 
 
-    builder.ins().call_indirect(write_sig,write_address,&[returna[0],returna[1]]);
+    builder.ins().call_indirect(write_sig,write_address,&[returna,returna]);
 
     println!("d3");
 
@@ -269,10 +269,106 @@ pub fn test_compile(){
     
 }
 
-pub fn test_compile2(){
+pub fn test_compile2(code_snip: Vec<ast::Node>){
     let mut l = JIT::new();
-    let func = l.create_function(&[I64], &[I64]);
+    let  (_mainfuncid,mut ctx) = l.create_function(&[], &[I64]);
     //l.module.declare_func_in_func(func_id, func)
+    let mut builder = FunctionBuilder::new(&mut ctx.func, &mut l.builder_ctx);
+    let entryblock = builder.create_block();
+    builder.seal_block(entryblock);
+    
+    builder.append_block_params_for_function_params(entryblock);
+    builder.switch_to_block(entryblock);
+
+    let mut variables: HashMap<String, Variable> = HashMap::new();
+
+    
+
+    for x in code_snip{
+        match x{
+            Node::Varasgn { op, name, asgn } =>{
+                match op{
+                    ast::Op::Equall =>{
+                        if variables.contains_key(&name){
+                            todo!()
+                        }else{
+                            match *asgn{
+                                Node::Int(a) =>{
+                                    let var = Variable::new(0);
+                                    builder.declare_var(var, l.pointer_type);
+    
+                                    let num = builder.ins().iconst(I64, a);
+                                    builder.def_var(var,num);
+                                    variables.insert(name, var);
+    
+                                }
+                                _=>{
+                                    todo!()
+                                }
+                            }
+                        }
+                        
+                    }
+                    ast::Op::Plus =>{
+                        if variables.contains_key(&name){
+                           // panic!("not a var {}, {:#?}",name, variables);
+                           match *asgn{
+                            Node::Int(a) =>{
+                                
+                                let v = builder.use_var(*variables.get(&name).unwrap());
+                                let num_plus_v = builder.ins().iadd_imm(v, a);
+                                builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
+
+                            }
+                            _=>{
+                                todo!()
+                            }
+                        } 
+                        }
+                       
+                    }
+                    _=>{
+                        todo!()
+                    }
+                }
+               
+            }
+            _=>{
+                todo!()
+            }
+        }
+    }
+    let v = builder.use_var(*variables.get("x").unwrap());
+
+    builder.ins().return_(&[v]);
+    
+    builder.finalize();
+    println!("{:#?}",ctx.func.layout);
+
+    println!("{}",ctx.func);
+
+   
+
+    l.module.define_function(_mainfuncid, &mut ctx).unwrap();
+    
+    println!("d4");
+
+   
+
+
+    l.module.finalize_definitions().unwrap();
+
+    
+
+    let code = l.module.get_finalized_function(_mainfuncid);
+
+    unsafe {
+        let code_fn:unsafe extern "sysv64" fn() ->i64 =  mem::transmute::<_, unsafe extern "sysv64" fn()->i64>(code);
+        // unsafe extern "sysv64" fn(usize) ->usize 
+        let f = code_fn();
+        println!("{f}");
+    };
+
 
 
 }
@@ -301,10 +397,9 @@ impl JIT{
         let pointer_type = isa.pointer_type();
 
         let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-        println!("d0");
 
 
-        let mut module = JITModule::new(builder);
+        let module = JITModule::new(builder);
         Self{
             module,
             fn_refs: Vec::new(),
@@ -323,7 +418,7 @@ impl JIT{
 
     }
 
-    pub fn create_function(&mut self, params: &[Type], returns: &[Type] )-> (FuncId, Function){
+    pub fn create_function(&mut self, params: &[Type], returns: &[Type] )-> (FuncId, Context){
         let mut sig = Signature::new(CallConv::SystemV);
 
 
@@ -336,14 +431,17 @@ impl JIT{
         }
         let name = self.refid().to_string();
         let id = self.module.declare_function(&name, Linkage::Export, &sig).unwrap();
+        let mut ctx = Context::new();
+        ctx.func.signature = sig.clone();
 
         let func = Function::with_name_signature(UserFuncName::user(0,self.refid), sig);
         
+        ctx.func = func;
         
 
 
 
-        (id,func)
+        (id,ctx)
     }   
 
 

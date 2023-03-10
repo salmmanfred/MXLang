@@ -19,6 +19,7 @@ fn main() {
 
     parser::execute::execute_code();
     compile::jit::test_compile();
+    compile::jit::test_compile2(parser::ast::gen("./test.MXLA"))
 
     //TODO: libraries import!("file.file") (done)
     //TODO: standard library (WUP)
