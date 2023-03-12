@@ -272,8 +272,9 @@ pub fn test_compile(){
 pub fn test_compile2(code_snip: Vec<ast::Node>){
     let mut l = JIT::new();
     let  (_mainfuncid,mut ctx) = l.create_function(&[], &[I64]);
+    let mut buildctx = FunctionBuilderContext::new();
     //l.module.declare_func_in_func(func_id, func)
-    let mut builder = FunctionBuilder::new(&mut ctx.func, &mut l.builder_ctx);
+    let mut builder = FunctionBuilder::new(&mut ctx.func, &mut buildctx);
     let entryblock = builder.create_block();
     builder.seal_block(entryblock);
     
@@ -282,7 +283,7 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
 
     let mut variables: HashMap<String, Variable> = HashMap::new();
 
-    
+    let mut var_num = 0;
 
     for x in code_snip{
         match x{
@@ -294,13 +295,43 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
                         }else{
                             match *asgn{
                                 Node::Int(a) =>{
-                                    let var = Variable::new(0);
+                                    let var = Variable::new(l.varid());
+                                  
                                     builder.declare_var(var, l.pointer_type);
     
                                     let num = builder.ins().iconst(I64, a);
                                     builder.def_var(var,num);
                                     variables.insert(name, var);
     
+                                }
+                                Node::Var(a)=>{
+                                    let var = variables.get(&a).unwrap();
+                                    let varval = builder.use_var(*var);
+
+                                    let var = Variable::new(l.varid());
+                              
+
+                                    builder.declare_var(var, l.pointer_type);
+                                    builder.def_var(var,varval);
+                                    variables.insert(name, var);
+
+
+                                }
+                                Node::Function { args, insides } =>{
+                                    // TODO: add return somehow 
+                                    let mut arg_typ: Vec<Type> = Vec::new();
+                                    for x in args{
+                                        match x{
+                                            Node::Int(_)=>{
+                                                arg_typ.push(I64)
+                                            }
+                                            _=>{}
+                                        }
+                                    }
+                                    let (funcid2, mut func2ctx) = l.create_function(&arg_typ, &[]);
+                                    //TODO: make the entire compile part its own function to simplify the next step
+                                    todo!()
+
                                 }
                                 _=>{
                                     todo!()
@@ -320,6 +351,14 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
                                 builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
 
                             }
+                            Node::Var(a) =>{
+                                let v = builder.use_var(*variables.get(&name).unwrap());
+                                let v2 = builder.use_var(*variables.get(&a).unwrap());
+
+
+                                let num_plus_v = builder.ins().iadd(v, v2);
+                                builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
+                            }
                             _=>{
                                 todo!()
                             }
@@ -338,7 +377,7 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
             }
         }
     }
-    let v = builder.use_var(*variables.get("x").unwrap());
+    let v = builder.use_var(*variables.get("y").unwrap());
 
     builder.ins().return_(&[v]);
     
@@ -381,6 +420,7 @@ struct JIT{
     sigs: Vec<Signature>,
     pointer_type: Type,
     refid: u32,
+    varid: usize,
    
 }
 impl JIT{
@@ -408,6 +448,7 @@ impl JIT{
             sigs: Vec::new(),
             pointer_type,
             refid: 0,
+            varid: 0,
            
             
         }
@@ -416,6 +457,10 @@ impl JIT{
         self.refid += 1;
         self.refid
 
+    }
+    pub fn varid(&mut self)->usize{
+        self.varid += 1;
+        self.varid
     }
 
     pub fn create_function(&mut self, params: &[Type], returns: &[Type] )-> (FuncId, Context){
