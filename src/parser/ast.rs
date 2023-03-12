@@ -175,7 +175,7 @@ impl Node {
         let v = self.unwrap_var(vars);
         match *v {
             Node::String(a) => {
-                let a = a.to_string();
+                let a = a;
                 if a == "" {
                     return "".to_string();
                 }
