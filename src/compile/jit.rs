@@ -9,7 +9,7 @@ use cranelift::codegen::{
     ir::{types::I64, AbiParam, Function, Signature},
     isa::CallConv,
 };
-use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags, EntityRef, Configurable, Type, Variable};
+use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags, EntityRef, Configurable, Type, Variable, Value};
 
 use cranelift::codegen::{isa, settings, Context};
 use cranelift_jit::{JITModule, JITBuilder};
@@ -348,7 +348,7 @@ fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: Fu
                                     let ins = builder.ins().call(func, &[]);
                                     let num = builder.func.dfg.inst_results(ins)[0];
 
-
+                                    
     
                                     builder.def_var(var,num);
                                     variables.insert(name_alt, var);
@@ -391,6 +391,47 @@ fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: Fu
                     }
                 }
                
+            }
+            Node::Ifs { arg1, if_op, arg2, insides } =>{
+                match if_op{
+
+                    ast::Op::Equall =>{
+                        //TODO a better job
+                        let arg1val: Value;
+                        match *arg1{
+                            Node::Int(a)=>{
+                                arg1val = builder.ins().iconst(I64, a)
+                            }
+                            Node::Var(a)=>{
+                                arg1val = builder.use_var(*variables.get(&a).unwrap());
+
+                            }
+                            _=>{todo!()}
+                        }
+                        let arg2val: Value;
+                        match *arg2{
+                            Node::Int(a)=>{
+                                arg2val = builder.ins().iconst(I64, a)
+                            }
+                            Node::Var(a)=>{
+                                arg2val = builder.use_var(*variables.get(&a).unwrap());
+
+                            }
+                            _=>{todo!()}
+                        }
+                        let c = builder.ins().isub(arg1val, arg2val);
+                        let then_block = builder.create_block();
+
+                        //TODO: need infrastructure change
+                        //TODO: compile_code only needs to build blocks maybe make it accept only a builder and block or smth
+                        todo!()
+                        //builder.ins().brif(c, block_then_label, block_then_args, block_else_label, block_else_args)
+                    }
+
+                    _=>{
+                        todo!()
+                    }
+                }
             }
             _=>{
                 todo!()
