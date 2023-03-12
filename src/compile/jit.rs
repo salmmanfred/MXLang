@@ -269,11 +269,9 @@ pub fn test_compile(){
     
 }
 
-pub fn test_compile2(code_snip: Vec<ast::Node>){
-    let mut l = JIT::new();
-    let  (_mainfuncid,mut ctx) = l.create_function(&[], &[I64]);
+fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: FuncId, TEMPARG: bool){
+
     let mut buildctx = FunctionBuilderContext::new();
-    //l.module.declare_func_in_func(func_id, func)
     let mut builder = FunctionBuilder::new(&mut ctx.func, &mut buildctx);
     let entryblock = builder.create_block();
     builder.seal_block(entryblock);
@@ -282,22 +280,27 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
     builder.switch_to_block(entryblock);
 
     let mut variables: HashMap<String, Variable> = HashMap::new();
+    let mut funcs: HashMap<String, FuncRef> = HashMap::new();
 
-    let mut var_num = 0;
 
-    for x in code_snip{
+
+    for x in code{
         match x{
             Node::Varasgn { op, name, asgn } =>{
+                let name_alt = name.clone(); //TODO: needs to be done in a better way
+
                 match op{
                     ast::Op::Equall =>{
+
                         if variables.contains_key(&name){
                             todo!()
                         }else{
                             match *asgn{
+                                //TODO: better way of doing this? 
                                 Node::Int(a) =>{
-                                    let var = Variable::new(l.varid());
+                                    let var = Variable::new(module.varid());
                                   
-                                    builder.declare_var(var, l.pointer_type);
+                                    builder.declare_var(var, module.pointer_type);
     
                                     let num = builder.ins().iconst(I64, a);
                                     builder.def_var(var,num);
@@ -308,10 +311,10 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
                                     let var = variables.get(&a).unwrap();
                                     let varval = builder.use_var(*var);
 
-                                    let var = Variable::new(l.varid());
+                                    let var = Variable::new(module.varid());
                               
 
-                                    builder.declare_var(var, l.pointer_type);
+                                    builder.declare_var(var, module.pointer_type);
                                     builder.def_var(var,varval);
                                     variables.insert(name, var);
 
@@ -328,10 +331,27 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
                                             _=>{}
                                         }
                                     }
-                                    let (funcid2, mut func2ctx) = l.create_function(&arg_typ, &[]);
-                                    //TODO: make the entire compile part its own function to simplify the next step
-                                    todo!()
+                                    let (funcid2, mut func2ctx) = module.create_function(&arg_typ, &[I64]);
+                                    
+                                    compile_code(insides, module, &mut func2ctx, funcid2, true);
+                                    
+                                    let funcref = module.module.declare_func_in_func(funcid2, builder.func);
+                                    funcs.insert(name, funcref);
 
+                                }
+                                Node::RunFunction { name, args } =>{
+                                    let func = *funcs.get(&name).unwrap();
+                                    let var = Variable::new(module.varid());
+                                  
+                                    builder.declare_var(var, module.pointer_type);
+                                    //TODO: add args
+                                    let ins = builder.ins().call(func, &[]);
+                                    let num = builder.func.dfg.inst_results(ins)[0];
+
+
+    
+                                    builder.def_var(var,num);
+                                    variables.insert(name_alt, var);
                                 }
                                 _=>{
                                     todo!()
@@ -377,26 +397,40 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
             }
         }
     }
-    let v = builder.use_var(*variables.get("y").unwrap());
+    if TEMPARG{
+        let v = builder.use_var(*variables.get("y").unwrap());
 
-    builder.ins().return_(&[v]);
-    
+        builder.ins().return_(&[v]);
+        
+    }else{
+        builder.ins().return_(&[]);
+
+    }
     builder.finalize();
-    println!("{:#?}",ctx.func.layout);
+    
+    //println!("{:#?}",ctx.func.layout);
 
     println!("{}",ctx.func);
 
    
 
-    l.module.define_function(_mainfuncid, &mut ctx).unwrap();
+    module.module.define_function(funcid, ctx).unwrap();
     
     println!("d4");
 
    
 
 
-    l.module.finalize_definitions().unwrap();
+}
 
+pub fn test_compile2(code_snip: Vec<ast::Node>){
+    let mut l = JIT::new();
+    let  (_mainfuncid,mut ctx) = l.create_function(&[], &[I64]);
+    //l.module.declare_func_in_func(func_id, func)
+    
+    compile_code(code_snip, &mut l, &mut ctx, _mainfuncid, true);
+
+    l.module.finalize_definitions().unwrap();
     
 
     let code = l.module.get_finalized_function(_mainfuncid);
@@ -412,7 +446,7 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
 
 }
 
-struct JIT{
+pub struct JIT{
     module: JITModule,
     fn_refs: Vec<FuncRef>,
     pub builder_ctx: FunctionBuilderContext,
