@@ -9,7 +9,7 @@ use cranelift::codegen::{
     ir::{types::I64, AbiParam, Function, Signature},
     isa::CallConv,
 };
-use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags, EntityRef, Configurable, Type, Variable, Value};
+use cranelift::prelude::{InstBuilder, types, ExtFuncData, MemFlags, EntityRef, Configurable, Type, Variable, Value, Block};
 
 use cranelift::codegen::{isa, settings, Context};
 use cranelift_jit::{JITModule, JITBuilder};
@@ -269,21 +269,13 @@ pub fn test_compile(){
     
 }
 
-fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: FuncId, TEMPARG: bool){
 
-    let mut buildctx = FunctionBuilderContext::new();
-    let mut builder = FunctionBuilder::new(&mut ctx.func, &mut buildctx);
-    let entryblock = builder.create_block();
-    builder.seal_block(entryblock);
-    
-    builder.append_block_params_for_function_params(entryblock);
-    builder.switch_to_block(entryblock);
-
-    let mut variables: HashMap<String, Variable> = HashMap::new();
-    let mut funcs: HashMap<String, FuncRef> = HashMap::new();
-
-
-
+fn compile_code(code: Vec<Node>,
+    module: &mut JIT,  
+    builder: &mut FunctionBuilder,
+    variables: &mut HashMap<String, Variable>,
+    funcs: &mut HashMap<String, FuncRef>,
+){
     for x in code{
         match x{
             Node::Varasgn { op, name, asgn } =>{
@@ -293,6 +285,7 @@ fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: Fu
                     ast::Op::Equall =>{
 
                         if variables.contains_key(&name){
+                            
                             todo!()
                         }else{
                             match *asgn{
@@ -333,7 +326,7 @@ fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: Fu
                                     }
                                     let (funcid2, mut func2ctx) = module.create_function(&arg_typ, &[I64]);
                                     
-                                    compile_code(insides, module, &mut func2ctx, funcid2, true);
+                                    function_compiler_handler(insides, module, &mut func2ctx, funcid2, true);
                                     
                                     let funcref = module.module.declare_func_in_func(funcid2, builder.func);
                                     funcs.insert(name, funcref);
@@ -393,42 +386,74 @@ fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: Fu
                
             }
             Node::Ifs { arg1, if_op, arg2, insides } =>{
+                //TODO a better job
+                let arg1val: Value;
+                match *arg1{
+                    Node::Int(a)=>{
+                        arg1val = builder.ins().iconst(I64, a)
+                    }
+                    Node::Var(a)=>{
+                        arg1val = builder.use_var(*variables.get(&a).unwrap());
+
+                    }
+                    _=>{todo!()}
+                }
+                let arg2val: Value;
+                match *arg2{
+                    Node::Int(a)=>{
+                       
+                        arg2val = builder.ins().iconst(I64, a)
+                    }
+                    Node::Var(a)=>{
+                        arg2val = builder.use_var(*variables.get(&a).unwrap());
+
+                    }
+                    _=>{todo!()}
+                }
                 match if_op{
 
-                    ast::Op::Equall =>{
-                        //TODO a better job
-                        let arg1val: Value;
-                        match *arg1{
-                            Node::Int(a)=>{
-                                arg1val = builder.ins().iconst(I64, a)
-                            }
-                            Node::Var(a)=>{
-                                arg1val = builder.use_var(*variables.get(&a).unwrap());
-
-                            }
-                            _=>{todo!()}
-                        }
-                        let arg2val: Value;
-                        match *arg2{
-                            Node::Int(a)=>{
-                                arg2val = builder.ins().iconst(I64, a)
-                            }
-                            Node::Var(a)=>{
-                                arg2val = builder.use_var(*variables.get(&a).unwrap());
-
-                            }
-                            _=>{todo!()}
-                        }
+                    ast::Op::EquallEquall =>{
+                        
                         let c = builder.ins().isub(arg1val, arg2val);
                         let then_block = builder.create_block();
+                        let else_block = builder.create_block();
+                        let merge_block = builder.create_block();
 
-                        //TODO: need infrastructure change
-                        //TODO: compile_code only needs to build blocks maybe make it accept only a builder and block or smth
-                        todo!()
-                        //builder.ins().brif(c, block_then_label, block_then_args, block_else_label, block_else_args)
+                       /*  builder.seal_block(then_block);
+                        builder.seal_block(else_block);*/
+
+
+
+
+
+                        
+
+                       // else is the new then 
+                        builder.ins().brif(c, else_block, &[], then_block, &[]);
+
+                        builder.switch_to_block(then_block);
+                        builder.seal_block(then_block);
+
+
+                        compile_code(insides, module, builder, variables, funcs);
+
+                        builder.ins().jump(merge_block, &[]);
+
+                        builder.switch_to_block(else_block);
+                        builder.seal_block(else_block);
+                        builder.ins().jump(merge_block, &[]);
+                       
+
+                        
+
+
+                        builder.switch_to_block(merge_block);
+                        builder.seal_block(merge_block);
+
                     }
 
                     _=>{
+                       
                         todo!()
                     }
                 }
@@ -438,6 +463,25 @@ fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: Fu
             }
         }
     }
+}
+
+
+fn function_compiler_handler(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: FuncId, TEMPARG: bool){
+
+    let mut buildctx = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut ctx.func, &mut buildctx);
+    let entryblock = builder.create_block();
+    builder.seal_block(entryblock);
+    
+    builder.append_block_params_for_function_params(entryblock);
+    builder.switch_to_block(entryblock);
+
+    let mut variables: HashMap<String, Variable> = HashMap::new();
+    let mut funcs: HashMap<String, FuncRef> = HashMap::new();
+
+    compile_code(code, module, &mut builder, &mut variables, &mut funcs);
+
+    
     if TEMPARG{
         let v = builder.use_var(*variables.get("y").unwrap());
 
@@ -447,11 +491,12 @@ fn compile_code(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: Fu
         builder.ins().return_(&[]);
 
     }
+
     builder.finalize();
     
+    println!("{}",ctx.func);
     //println!("{:#?}",ctx.func.layout);
 
-    println!("{}",ctx.func);
 
    
 
@@ -469,7 +514,7 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
     let  (_mainfuncid,mut ctx) = l.create_function(&[], &[I64]);
     //l.module.declare_func_in_func(func_id, func)
     
-    compile_code(code_snip, &mut l, &mut ctx, _mainfuncid, true);
+    function_compiler_handler(code_snip, &mut l, &mut ctx, _mainfuncid, true);
 
     l.module.finalize_definitions().unwrap();
     

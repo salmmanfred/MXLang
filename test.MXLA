@@ -3,9 +3,13 @@ x += 1
 
 
 testfu = (){
-    z = 5
+    z = 6
     y = z
 }
 
-y = testfu()
+
+if x == 6{
+    y = testfu()
+}
+
 
