@@ -338,7 +338,25 @@ fn compile_code(code: Vec<Node>,
                                   
                                     builder.declare_var(var, module.pointer_type);
                                     //TODO: add args
-                                    let ins = builder.ins().call(func, &[]);
+
+                                    let mut argsval: Vec<Value> = Vec::new();
+                                    
+                                    for arg in args{
+                                        
+                                         match arg{
+                                            Node::Int(a) =>{
+                                                argsval.push(builder.ins().iconst(I64,a));
+                                            }
+                                            _=>{    
+                                                todo!()
+                                            }
+                                
+                                          }
+                                        
+                                    }                                              
+                                                                          
+                                    
+                                    let ins = builder.ins().call(func, &argsval);
                                     let num = builder.func.dfg.inst_results(ins)[0];
 
                                     
