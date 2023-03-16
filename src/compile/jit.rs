@@ -316,17 +316,21 @@ fn compile_code(code: Vec<Node>,
                                 Node::Function { args, insides } =>{
                                     // TODO: add return somehow 
                                     let mut arg_typ: Vec<Type> = Vec::new();
-                                    for x in args{
+                                    println!("aa{:#?}",args);
+                                    for x in args.clone(){
                                         match x{
                                             Node::Int(_)=>{
                                                 arg_typ.push(I64)
+                                            }
+                                            Node::Var(_)=>{
+                                                arg_typ.push(I64);
                                             }
                                             _=>{}
                                         }
                                     }
                                     let (funcid2, mut func2ctx) = module.create_function(&arg_typ, &[I64]);
                                     
-                                    function_compiler_handler(insides, module, &mut func2ctx, funcid2, true);
+                                    function_compiler_handler(args,insides, module, &mut func2ctx, funcid2, true);
                                     
                                     let funcref = module.module.declare_func_in_func(funcid2, builder.func);
                                     funcs.insert(name, funcref);
@@ -340,12 +344,19 @@ fn compile_code(code: Vec<Node>,
                                     //TODO: add args
 
                                     let mut argsval: Vec<Value> = Vec::new();
-                                    
+                                    println!("{:?}",args);
                                     for arg in args{
                                         
                                          match arg{
                                             Node::Int(a) =>{
                                                 argsval.push(builder.ins().iconst(I64,a));
+                                            }
+                                            Node::Var(a)=>{
+                                                if a == ""{
+
+                                                }else{
+                                                    todo!()
+                                                }
                                             }
                                             _=>{    
                                                 todo!()
@@ -374,26 +385,26 @@ fn compile_code(code: Vec<Node>,
                     ast::Op::Plus =>{
                         if variables.contains_key(&name){
                            // panic!("not a var {}, {:#?}",name, variables);
-                           match *asgn{
-                            Node::Int(a) =>{
-                                
-                                let v = builder.use_var(*variables.get(&name).unwrap());
-                                let num_plus_v = builder.ins().iadd_imm(v, a);
-                                builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
+                            match *asgn{
+                                Node::Int(a) =>{
+                                    
+                                    let v = builder.use_var(*variables.get(&name).unwrap());
+                                    let num_plus_v = builder.ins().iadd_imm(v, a);
+                                    builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
 
-                            }
-                            Node::Var(a) =>{
-                                let v = builder.use_var(*variables.get(&name).unwrap());
-                                let v2 = builder.use_var(*variables.get(&a).unwrap());
+                                }
+                                Node::Var(a) =>{
+                                    let v = builder.use_var(*variables.get(&name).unwrap());
+                                    let v2 = builder.use_var(*variables.get(&a).unwrap());
 
 
-                                let num_plus_v = builder.ins().iadd(v, v2);
-                                builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
-                            }
-                            _=>{
-                                todo!()
-                            }
-                        } 
+                                    let num_plus_v = builder.ins().iadd(v, v2);
+                                    builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
+                                }
+                                _=>{
+                                    todo!()
+                                }
+                            } 
                         }
                        
                     }
@@ -484,7 +495,7 @@ fn compile_code(code: Vec<Node>,
 }
 
 
-fn function_compiler_handler(code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: FuncId, TEMPARG: bool){
+fn function_compiler_handler(args:Vec<Node>,code: Vec<Node>,module: &mut JIT,  ctx: &mut Context, funcid: FuncId, TEMPARG: bool){
 
     let mut buildctx = FunctionBuilderContext::new();
     let mut builder = FunctionBuilder::new(&mut ctx.func, &mut buildctx);
@@ -496,7 +507,24 @@ fn function_compiler_handler(code: Vec<Node>,module: &mut JIT,  ctx: &mut Contex
 
     let mut variables: HashMap<String, Variable> = HashMap::new();
     let mut funcs: HashMap<String, FuncRef> = HashMap::new();
+        
+   
 
+    for (i,arg) in args.iter().enumerate(){
+        if let Node::Var(name) = arg{
+            let var = Variable::new(module.varid());
+            let argin = builder.block_params(entryblock)[i];   
+            builder.declare_var(var, module.pointer_type);
+            
+            let num = argin;
+            builder.def_var(var,num);
+            variables.insert(name.to_string(), var);
+        }
+                
+          
+    }   
+
+    
     compile_code(code, module, &mut builder, &mut variables, &mut funcs);
 
     
@@ -532,7 +560,7 @@ pub fn test_compile2(code_snip: Vec<ast::Node>){
     let  (_mainfuncid,mut ctx) = l.create_function(&[], &[I64]);
     //l.module.declare_func_in_func(func_id, func)
     
-    function_compiler_handler(code_snip, &mut l, &mut ctx, _mainfuncid, true);
+    function_compiler_handler(Vec::new(),code_snip, &mut l, &mut ctx, _mainfuncid, true);
 
     l.module.finalize_definitions().unwrap();
     

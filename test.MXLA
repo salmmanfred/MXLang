@@ -2,14 +2,18 @@ x = 5
 x += 1
 
 
-testfu = (){
+testfu = (a){
     z = 6
+    z += a
     y = z
 }
 
 
 if x == 6{
-    y = testfu()
+    t = testfu(6)
+    if t == 12{
+        y = 12
+    }
 }
 
 
