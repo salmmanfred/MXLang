@@ -40,7 +40,6 @@ pub enum InternalFunctions {
     Print(bool),
     LenArray,
     Import,
-    
 }
 impl InternalFunctions {
     pub fn to_intfun(str: &str) -> InternalFunctions {
@@ -49,8 +48,7 @@ impl InternalFunctions {
             "println" => InternalFunctions::Print(true),
             "len" => InternalFunctions::LenArray,
             "import" => InternalFunctions::Import,
-            
-            
+
             _ => panic!("not internal"),
         }
     }
@@ -87,7 +85,7 @@ pub enum Node {
         name: String,
         args: Vec<Node>,
     },
-    Nop
+    Nop,
 }
 impl Node {
     pub fn unwrap_fun(&self) -> (Vec<Node>, Vec<Node>) {
@@ -101,7 +99,7 @@ impl Node {
             Node::Array(a) => return a.to_owned(),
 
             a => {
-                panic!("Not an array {:?}",a);
+                panic!("Not an array {:?}", a);
             }
         }
     }
@@ -135,19 +133,17 @@ impl Node {
 
                 returnstm
             }
-            Node::InternalFunction { typ, args } =>{
-                match typ{
-                    InternalFunctions::LenArray =>{
-                        let len = args[0].unwrap_var(vars).unwrap_array().len();
-                        return Box::new(Node::Int(len as i64))
-                    }
-                    a=>{
-                        panic!("No return statement for {:#?}",a)
-                    }
+            Node::InternalFunction { typ, args } => match typ {
+                InternalFunctions::LenArray => {
+                    let len = args[0].unwrap_var(vars).unwrap_array().len();
+                    return Box::new(Node::Int(len as i64));
                 }
-            }
+                a => {
+                    panic!("No return statement for {:#?}", a)
+                }
+            },
             a => {
-               // println!("here");
+                // println!("here");
                 Box::new(a.clone())
             }
         }
@@ -184,12 +180,11 @@ impl Node {
                 if b.len() <= 1 {
                     return "".to_string();
                 }
-                if b[0] == '"'{
+                if b[0] == '"' {
                     b.remove(0);
                 }
-                if b[b.len() - 1] =='"'{
+                if b[b.len() - 1] == '"' {
                     b.remove(b.len() - 1);
-
                 }
                 b.iter().collect()
             }
@@ -271,7 +266,6 @@ impl Node {
     }
 }
 pub fn gen(file: &str) -> Vec<Node> {
-    
     let x = openfile::read_file(file).unwrap();
     /*let x: String = match code_ok_err{
         Ok(a) =>{
@@ -279,14 +273,14 @@ pub fn gen(file: &str) -> Vec<Node> {
         }
         Err(a) =>{
             let err_mes =  a.to_string().as_str();
-            
+
             return "println!(\"there was an error loading the file\")".to_string()
-            
+
         }
-        
+
     };
     println!("{x}");
-    
+
     */
     let mut ast = vec![];
     let pairs = Pars::parse(Rule::program, &x).unwrap();
@@ -300,7 +294,7 @@ pub fn gen(file: &str) -> Vec<Node> {
     }
     ast
 }
-pub fn gen_access(x: &str)->Vec<Node>{
+pub fn gen_access(x: &str) -> Vec<Node> {
     let mut ast = vec![];
     let pairs = Pars::parse(Rule::program, &x).unwrap();
     //println!("{:#?}", pairs);
@@ -376,7 +370,7 @@ pub fn build_ast(pair: pest::iterators::Pair<Rule>) -> Node {
                 insides: inside,
             }
         }
-        Rule::string=>{return Node::Nop}
+        Rule::string => return Node::Nop,
 
         a => {
             panic!("{:#?}", a);
@@ -463,7 +457,7 @@ pub fn build_ast_from_expr(pair: pest::iterators::Pair<Rule>) -> Node {
             let funstmt = build_ast(pair);
             funstmt
         }
-        
+
         a => {
             panic!("{:#?}", a)
         }
@@ -474,21 +468,18 @@ pub fn clean_string(a: String) -> String {
     if a == "" {
         return "".to_string();
     }
-    
+
     let mut b: Vec<char> = a.chars().collect();
-    
 
     if b.len() <= 1 {
         return "".to_string();
     }
-    if b[0] == '"'{
-       
+    if b[0] == '"' {
         b.remove(0);
     }
-    if b[b.len() - 1] =='"'{
+    if b[b.len() - 1] == '"' {
         b.remove(b.len() - 1);
-        
     }
-    
+
     b.iter().collect()
 }

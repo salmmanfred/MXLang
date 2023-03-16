@@ -1,22 +1,13 @@
 mod parser;
 
-mod traits;
+mod compile;
 #[allow(special_module_name)]
 mod lib;
-mod compile;
+mod traits;
 
 extern crate pest_derive;
 
-
-
-
-
-
-
-
 fn main() {
-
-
     //parser::execute::execute_code();
     compile::jit::test_compile();
     compile::jit::test_compile2(parser::ast::gen("./test.MXLA"))
@@ -31,12 +22,4 @@ fn main() {
     //TODO: REMOVE push with array -= index (done)
     //TODO: ADD len(array) (done)
     //TODO: Add return for functions (done)
-
-    
-
-
-    
-
-
-   
 }

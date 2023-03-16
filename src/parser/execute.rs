@@ -1,13 +1,10 @@
 //! Do to some weird reason you have to use LF line endings idono why
 extern crate pest;
 
-
-
 use std::collections::HashMap;
 
 use crate::parser;
-use crate::parser::ast::{self,InternalFunctions, Node};
-
+use crate::parser::ast::{self, InternalFunctions, Node};
 
 /*
 Simple language implemented with small amounts of packages
@@ -21,7 +18,7 @@ This will make its easy and fast to get all the variables
 pub struct Vars {
     var: HashMap<String, Box<Node>>,
     functions: HashMap<String, Box<Node>>,
-    pub draw_stack: Vec<(String,Box<Vec<Node>>)>,
+    pub draw_stack: Vec<(String, Box<Vec<Node>>)>,
 }
 impl Vars {
     pub fn new() -> Self {
@@ -31,7 +28,7 @@ impl Vars {
             draw_stack: Vec::new(),
         }
     }
-    
+
     pub fn push(&mut self, str: String, val: Box<Node>) {
         match *val.clone() {
             Node::Function {
@@ -50,13 +47,12 @@ impl Vars {
     }
     pub fn get(&mut self, str: String) -> &Box<Node> {
         // println!("var: {}",str);
-        
+
         let Some(a) = self.var.get(&str)else{
 
             panic!("No variable {:#?}",str);
         };
         a
-
     }
 
     /*pub fn clone_func(&mut self) -> Vars {
@@ -79,14 +75,12 @@ pub fn execute_code() {
     let mut var = Vars::new();
     // runs the entire program
     run(nodes, &mut var);
-    
 }
 //#[decurse::decurse_unsound]
 pub fn run(nodes: Vec<Node>, var: &mut Vars) {
     // This interprets everything in the vector
 
     for x in nodes {
-
         //Only some nodes can be run so this makes sure it is only them who come through
         match x {
             // This function assigns to variables
@@ -109,12 +103,12 @@ pub fn run(nodes: Vec<Node>, var: &mut Vars) {
 
                                 var.push(name, Box::new(Node::Array(a)))
                             }
-                            Node::String(a)=>{
+                            Node::String(a) => {
                                 let mut a = ast::clean_string(a);
                                 let asgn = asgn.unwrap_var(var);
                                 a.push_str(&asgn.to_print_clean());
-                                
-                                var.push(name,Box::new(Node::String(a)))
+
+                                var.push(name, Box::new(Node::String(a)))
                             }
 
                             _ => {
@@ -167,27 +161,25 @@ pub fn run(nodes: Vec<Node>, var: &mut Vars) {
                         // If its true it prints it with a new line or without if it is false
                         match a {
                             true => println!("{string}"),
-                            false => print!("{string}")
+                            false => print!("{string}"),
                         };
                     }
                     InternalFunctions::LenArray => {
                         let len = args[0].unwrap_var(var).unwrap_array().len();
                         panic!("len {len}");
                     }
-                    InternalFunctions::Import =>{
+                    InternalFunctions::Import => {
                         // function to import all files and run them
                         // import!("test.sm","std.sm",etc..)
                         // import it on top of the current variables to make sure its like an extention of the
                         // current working file
 
-                        for x in args{
+                        for x in args {
                             let arg = x.to_print_var_clean(var);
                             // most of the work is offloaded to another module
-                             crate::lib::load_library(arg.as_str(), var)
+                            crate::lib::load_library(arg.as_str(), var)
                         }
-
                     }
-                    
                 }
             }
             Node::RunFunction { name, args } => {
@@ -208,7 +200,9 @@ pub fn run(nodes: Vec<Node>, var: &mut Vars) {
                         Here it gets the arguments makes them strings and then compares them
                         */
 
-                        if arg1.unwrap_var(var).unwrap_var(var).to_print_var(var) == arg2.unwrap_var(var).to_print_var(var) {
+                        if arg1.unwrap_var(var).unwrap_var(var).to_print_var(var)
+                            == arg2.unwrap_var(var).to_print_var(var)
+                        {
                             // it makes a new instance of run to run what is inside of the if
                             // it then sends all the variables to it (sicne its still the same scope)
                             let _ = Box::new(run(insides, var));
@@ -238,14 +232,16 @@ pub fn run(nodes: Vec<Node>, var: &mut Vars) {
                         // println!("x {}, {}",arg1.to_print_var(&mut var),arg2.to_print_var(&mut var));
 
                         // works like in the string version just !=
-                        if arg1.unwrap_var(var).to_print_var(var) != arg2.unwrap_var(var).to_print_var(var) {
+                        if arg1.unwrap_var(var).to_print_var(var)
+                            != arg2.unwrap_var(var).to_print_var(var)
+                        {
                             let _ = Box::new(run(insides, var));
                         }
                     }
                     _ => todo!(),
                 }
             }
-            Node::Nop =>{}
+            Node::Nop => {}
             _ => panic!("not an operation"),
         }
     }
@@ -289,10 +285,8 @@ pub fn run_function(n: Node, var: &mut Vars) -> Vars {
     }
 
     run(fun_in, &mut var2);
-    if var2.draw_stack.len() != 0{
-       
+    if var2.draw_stack.len() != 0 {
         var.draw_stack.extend(var2.draw_stack.clone());
     }
     var2
 }
-
