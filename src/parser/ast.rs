@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use crate::parser::{self, execute};
+use cranelift::prelude::{Value, isa::Builder, types::I64, FunctionBuilder, InstBuilder, Variable};
 use openfile;
 use pest::Parser;
 use pest_derive::Parser;
@@ -56,6 +59,7 @@ impl InternalFunctions {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node {
+    //TODO: write wtf all this shit is I forgo
     Int(i64),
     String(String),
     Varasgn {
@@ -253,6 +257,7 @@ impl Node {
             }
         }
     }
+    
     pub fn check_var_empt(&self) -> bool {
         match self {
             Node::Var(a) => {
@@ -262,6 +267,15 @@ impl Node {
                 return false;
             }
             _ => return false,
+        }
+    }
+    pub fn get_var_if_jit(&self, variables: &mut HashMap<String, Variable>,builder: &mut FunctionBuilder)->Value{
+        match self {
+            Node::Int(a) => builder.ins().iconst(I64, *a),
+            Node::Var(a) => builder.use_var(*variables.get(a).unwrap()),
+            _ => {
+                todo!()
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+use std::alloc::{Layout, alloc};
 use std::collections::HashMap;
 use std::mem;
 
@@ -9,6 +10,7 @@ use cranelift::codegen::{
     isa::CallConv,
 };
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift::prelude::types::R64;
 use cranelift::prelude::{
     types, Block, Configurable, EntityRef, ExtFuncData, InstBuilder, MemFlags, Type, Value,
     Variable,
@@ -231,6 +233,7 @@ fn compile_code(
     builder: &mut FunctionBuilder,
     variables: &mut HashMap<String, Variable>,
     funcs: &mut HashMap<String, FuncRef>,
+    arrays: &mut HashMap<String, i64>,
 ) {
     for x in code {
         match x {
@@ -239,9 +242,8 @@ fn compile_code(
 
                 match op {
                     ast::Op::Equall => {
-                        if variables.contains_key(&name) {
-                            todo!()
-                        } else {
+                        
+                        
                             match *asgn {
                                 //TODO: better way of doing this?
                                 Node::Int(a) => {
@@ -252,6 +254,66 @@ fn compile_code(
                                     let num = builder.ins().iconst(I64, a);
                                     builder.def_var(var, num);
                                     variables.insert(name, var);
+                                }
+                                Node::Array(a)=>{
+
+                                    //TODO: This needs to be redone as for it to be run at runtime rather than compile time
+                                    //This is so that variables created at runtime can interact with it. 
+                                    unsafe{
+                                        let len = a.len()+1;
+                                        let layout = Layout::from_size_align(8*len, 2).unwrap();
+                                        let ptr_raw = alloc(layout);
+                                        if ptr_raw.is_null(){
+                                            panic!("Failed to allocate memory for array: {name}");
+                                        }
+                                        let p = ptr_raw as i64+8;
+                                            
+                                        //|len|obj1|obj2|...
+                                        //     ^^^ this is wha the pointer points to (trust me)
+                                        // this might be a handicap later but dont worry about it 
+
+                                        println!("{p}");
+
+                                        // setting the lenght of the array it does not include the lenght in the lenght
+                                        *((p-8) as *mut i64) = len as i64 -1;
+
+                                        // this looks like someones cat was given a computer
+                                        for x in 0..(len-1){
+                                            *((p+8*(x as i64)) as *mut i64) = a[x].unwrap_int();
+                                        }
+
+                                        let var = Variable::new(module.varid());
+
+                                        builder.declare_var(var, module.pointer_type);
+                                        //let ptr1  =  p as *mut i64;
+
+                                        let num = builder.ins().iconst(I64, p);
+                                        builder.def_var(var, num);
+                                        variables.insert(name.clone(), var);
+                                        arrays.insert(name.clone(), p);
+
+
+                                    }
+                                }
+                                //TODO: This also needs to be redone with the one above 
+                                Node::GetArray(a,b ) =>{
+                                    unsafe{
+                                        let addr = arrays.get(&a).unwrap();
+                                        let len = *((addr-8) as *mut i64);
+
+                                        if b.unwrap_int() >= len{
+                                            panic!("index out of bounds");
+                                        }
+                                        let value = *((addr+8*b.unwrap_int()) as *mut i64);
+                                        let var = Variable::new(module.varid());
+                                        builder.declare_var(var, module.pointer_type);
+                                        let varval = builder.ins().iconst(I64, value);
+                                        builder.def_var(var, varval);
+                                        variables.insert(name, var);
+                                        
+                                    }
+                                  
+
                                 }
                                 Node::Var(a) => {
                                     let var = variables.get(&a).unwrap();
@@ -328,10 +390,12 @@ fn compile_code(
                                     todo!()
                                 }
                             }
-                        }
+                        
                     }
                     ast::Op::Plus => {
                         if variables.contains_key(&name) {
+
+                            //TODO maybe rewrite it as its done in the interpreter
                             // panic!("not a var {}, {:#?}",name, variables);
                             match *asgn {
                                 Node::Int(a) => {
@@ -363,27 +427,11 @@ fn compile_code(
                 arg2,
                 insides,
             } => {
-                //TODO a better job
-                let arg1val: Value;
-                match *arg1 {
-                    Node::Int(a) => arg1val = builder.ins().iconst(I64, a),
-                    Node::Var(a) => {
-                        arg1val = builder.use_var(*variables.get(&a).unwrap());
-                    }
-                    _ => {
-                        todo!()
-                    }
-                }
-                let arg2val: Value;
-                match *arg2 {
-                    Node::Int(a) => arg2val = builder.ins().iconst(I64, a),
-                    Node::Var(a) => {
-                        arg2val = builder.use_var(*variables.get(&a).unwrap());
-                    }
-                    _ => {
-                        todo!()
-                    }
-                }
+                
+                let arg1val: Value = arg1.get_var_if_jit(variables, builder);
+                
+                let arg2val: Value = arg2.get_var_if_jit(variables, builder);
+               
                 match if_op {
                     ast::Op::EquallEquall => {
                         let c = builder.ins().isub(arg1val, arg2val);
@@ -400,7 +448,7 @@ fn compile_code(
                         builder.switch_to_block(then_block);
                         builder.seal_block(then_block);
 
-                        compile_code(insides, module, builder, variables, funcs);
+                        compile_code(insides, module, builder, variables, funcs,arrays);
 
                         builder.ins().jump(merge_block, &[]);
 
@@ -442,6 +490,7 @@ fn function_compiler_handler(
 
     let mut variables: HashMap<String, Variable> = HashMap::new();
     let mut funcs: HashMap<String, FuncRef> = HashMap::new();
+    let mut arrays: HashMap<String, i64> = HashMap::new();
 
     for (i, arg) in args.iter().enumerate() {
         if let Node::Var(name) = arg {
@@ -455,10 +504,10 @@ fn function_compiler_handler(
         }
     }
 
-    compile_code(code, module, &mut builder, &mut variables, &mut funcs);
-
+    compile_code(code, module, &mut builder, &mut variables, &mut funcs, &mut arrays);
+    //println!("vars: {:#?}",variables);
     if TEMPARG {
-        let v = builder.use_var(*variables.get("y").unwrap());
+        let v = builder.use_var(*variables.get("arr").unwrap());
 
         builder.ins().return_(&[v]);
     } else {
@@ -490,8 +539,16 @@ pub fn test_compile2(code_snip: Vec<ast::Node>) {
         let code_fn: unsafe extern "sysv64" fn() -> i64 =
             mem::transmute::<_, unsafe extern "sysv64" fn() -> i64>(code);
         // unsafe extern "sysv64" fn(usize) ->usize
-        let f = code_fn();
-        println!("{f}");
+        let mut f = code_fn();
+       
+       // let ptraddr1: *mut  i64 =  f;
+        //let ptr3 = std::ptr::read(f);
+        
+        let ptr2 = f as *const i64;
+        let ptr3 = std::ptr::read(ptr2);
+        let ptr2 = (f+8) as *const i64;
+        let ptr33 = std::ptr::read(ptr2);
+        println!(" {:#?}, {:#?}, {:#?}, {}",ptr2,f,ptr3, ptr33);
     };
 }
 
