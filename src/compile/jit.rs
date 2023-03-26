@@ -169,7 +169,7 @@ fn compile_code(
                                     //     ^^^ this is wha the pointer points to (trust me)
                                     // this might be a handicap later but dont worry about it 
 
-                                    let varval = builder.ins().iconst(I64, a.len() as i64);
+                                    let varval = builder.ins().iconst(I64, a.len() as i64 +8);
                                     println!("{}",a.len() as i64 as usize);
                                     let num = builder.ins().call_indirect(mallocsig, malloc_addr, &[varval]);
                                     let num = builder.func.dfg.inst_results(num)[0];
@@ -202,8 +202,7 @@ fn compile_code(
 
 
                                 }
-                                // ! Sometimes it just forgets what the value of the last index is 
-                                // ! memory freed or something somehow? 
+                                
                                 Node::GetArray(a,b ) =>{
                                     /*unsafe{
                                         let addr = arrays.get(&a).unwrap();
