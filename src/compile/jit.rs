@@ -227,6 +227,28 @@ pub fn test_compile() {
     println!("out: {}", x);*/
 }
 
+//TODO: do it in a better way
+unsafe extern "sysv64" fn malloc(size: i64)->i64{
+    let layout = Layout::from_size_align(8*size as usize, 2).unwrap();
+
+    let ptr_raw = alloc(layout);
+    if ptr_raw.is_null(){
+        panic!("Failed to allocate memory size: {size}");
+    }
+    let p = ptr_raw as i64+8;
+    
+
+
+    println!("ptrraw {:#?}, P: {}",ptr_raw, p );
+    p
+}
+unsafe extern "sysv64" fn poke(addr: i64, data: i64){
+    *(addr as *mut i64) = data;
+}
+unsafe extern "sysv64" fn peek(addr: i64)->i64{
+    *(addr as *mut i64)
+}
+
 fn compile_code(
     code: Vec<Node>,
     module: &mut JIT,
@@ -235,6 +257,49 @@ fn compile_code(
     funcs: &mut HashMap<String, FuncRef>,
     arrays: &mut HashMap<String, i64>,
 ) {
+
+    //TODO: This also in a better way
+    let (mallocsig, malloc_addr) = {
+        let mut malloc_sig = Signature::new(CallConv::SystemV);
+        malloc_sig.params.push(AbiParam::new(types::I64));
+        
+
+        malloc_sig.returns.push(AbiParam::new(I64));
+        let write_sig = builder.import_signature(malloc_sig);
+
+        let malloc_addr = malloc as *const () as i64;
+        let malloc_addr = builder.ins().iconst(module.pointer_type, malloc_addr);
+        (write_sig, malloc_addr)
+    };
+    let (poke_sig, poke_addr) = {
+        // ! when chaning these dont forget to change the function
+        let mut malloc_sig = Signature::new(CallConv::SystemV);
+        malloc_sig.params.push(AbiParam::new(types::I64));
+        malloc_sig.params.push(AbiParam::new(types::I64));
+
+
+       
+        let write_sig = builder.import_signature(malloc_sig);
+
+        let malloc_addr = poke as *const () as i64;
+        let malloc_addr = builder.ins().iconst(module.pointer_type, malloc_addr);
+        (write_sig, malloc_addr)
+    };
+    let (peek_sig, peek_addr) = {
+        // ! when chaning these dont forget to change the function
+        let mut malloc_sig = Signature::new(CallConv::SystemV);
+        malloc_sig.params.push(AbiParam::new(types::I64));
+       
+
+
+        malloc_sig.returns.push(AbiParam::new(I64));
+        let write_sig = builder.import_signature(malloc_sig);
+
+        let malloc_addr = peek as *const () as i64;
+        let malloc_addr = builder.ins().iconst(module.pointer_type, malloc_addr);
+        (write_sig, malloc_addr)
+    };
+
     for x in code {
         match x {
             Node::Varasgn { op, name, asgn } => {
@@ -257,9 +322,9 @@ fn compile_code(
                                 }
                                 Node::Array(a)=>{
 
-                                    //TODO: This needs to be redone as for it to be run at runtime rather than compile time
+                                    
                                     //This is so that variables created at runtime can interact with it. 
-                                    unsafe{
+                                    /*unsafe{
                                         let len = a.len()+1;
                                         let layout = Layout::from_size_align(8*len, 2).unwrap();
                                         let ptr_raw = alloc(layout);
@@ -293,11 +358,57 @@ fn compile_code(
                                         arrays.insert(name.clone(), p);
 
 
+                                    }*/
+
+
+                                    // An idea is to add before len an address to a continuation of the array 
+                                    //|addr|len|obj1|obj2|..|objn|
+                                    //          ^^^ p still points here but when i becomes bigger than len(-8) or equall it looks if addr (-16) 
+                                    // points anywhere if it does it jumps there and continues this then has the same layout 
+                                    // benifits: no need to realloc the entire thing if the current position in memory cannot support it
+                                    // negatives: slower
+
+                                    //|len|obj1|obj2|...
+                                    //     ^^^ this is wha the pointer points to (trust me)
+                                    // this might be a handicap later but dont worry about it 
+
+                                    let varval = builder.ins().iconst(I64, a.len() as i64);
+                                    println!("{}",a.len() as i64 as usize);
+                                    let num = builder.ins().call_indirect(mallocsig, malloc_addr, &[varval]);
+                                    let num = builder.func.dfg.inst_results(num)[0];
+                                    // Store the size 
+                                    let addr_size = builder.ins().iadd_imm(num, -8);
+                                    builder.ins().call_indirect(poke_sig, poke_addr, &[addr_size, varval]);
+                                    let mut addr = num;
+
+                                    for x in 0..a.len(){                                    
+                                        let varval = builder.ins().iconst(I64, a[x].unwrap_int());
+                                        //TODO                                                            ^^^ change to an internal unwrap_value
+                                        builder.ins().call_indirect(poke_sig, poke_addr, &[addr, varval]);
+                                        addr = builder.ins().iadd_imm(addr, 8);
+                                        println!("e");
+
                                     }
+                                    
+
+
+                                    let var = Variable::new(module.varid());
+
+                                    builder.declare_var(var, module.pointer_type);
+                                    
+
+                                    
+                                    builder.def_var(var, num);
+                                    variables.insert(name.clone(), var);
+
+
+
+
                                 }
-                                //TODO: This also needs to be redone with the one above 
+                                // ! Sometimes it just forgets what the value of the last index is 
+                                // ! memory freed or something somehow? 
                                 Node::GetArray(a,b ) =>{
-                                    unsafe{
+                                    /*unsafe{
                                         let addr = arrays.get(&a).unwrap();
                                         let len = *((addr-8) as *mut i64);
 
@@ -311,7 +422,25 @@ fn compile_code(
                                         builder.def_var(var, varval);
                                         variables.insert(name, var);
                                         
-                                    }
+                                    }*/
+
+                                    let var = variables.get(&a).unwrap();
+                                    let varval = builder.use_var(*var);
+                                    let addr  =builder.ins().iadd_imm(varval, b.unwrap_int()*8);
+                                    //TODO                                                  ^^^ change to an internal unwrap_value
+
+                                    let num = builder.ins().call_indirect(peek_sig, peek_addr, &[addr]);
+                                    let num = builder.func.dfg.inst_results(num)[0];
+
+                                    let var = Variable::new(module.varid());
+
+                                    builder.declare_var(var, module.pointer_type);
+                                    
+
+                                    
+                                    builder.def_var(var, num);
+                                    variables.insert(name.clone(), var);
+
                                   
 
                                 }
@@ -507,9 +636,11 @@ fn function_compiler_handler(
     compile_code(code, module, &mut builder, &mut variables, &mut funcs, &mut arrays);
     //println!("vars: {:#?}",variables);
     if TEMPARG {
-        let v = builder.use_var(*variables.get("arr").unwrap());
+        let v = builder.use_var(*variables.get("y").unwrap());
+        let v2 = builder.use_var(*variables.get("arr").unwrap());
 
-        builder.ins().return_(&[v]);
+
+        builder.ins().return_(&[v2,v]);
     } else {
         builder.ins().return_(&[]);
     }
@@ -526,7 +657,7 @@ fn function_compiler_handler(
 
 pub fn test_compile2(code_snip: Vec<ast::Node>) {
     let mut l = JIT::new();
-    let (_mainfuncid, mut ctx) = l.create_function(&[], &[I64]);
+    let (_mainfuncid, mut ctx) = l.create_function(&[], &[I64,I64]);
     //l.module.declare_func_in_func(func_id, func)
 
     function_compiler_handler(Vec::new(), code_snip, &mut l, &mut ctx, _mainfuncid, true);
@@ -536,19 +667,26 @@ pub fn test_compile2(code_snip: Vec<ast::Node>) {
     let code = l.module.get_finalized_function(_mainfuncid);
 
     unsafe {
-        let code_fn: unsafe extern "sysv64" fn() -> i64 =
-            mem::transmute::<_, unsafe extern "sysv64" fn() -> i64>(code);
+        let code_fn: unsafe extern "sysv64" fn() -> (i64,i64) =
+            mem::transmute::<_, unsafe extern "sysv64" fn() -> (i64,i64)>(code);
         // unsafe extern "sysv64" fn(usize) ->usize
-        let mut f = code_fn();
+        let (f,a) = code_fn();
        
        // let ptraddr1: *mut  i64 =  f;
         //let ptr3 = std::ptr::read(f);
         
         let ptr2 = f as *const i64;
         let ptr3 = std::ptr::read(ptr2);
+        for x in 0..5{
+            let ptr2 = (f+8*x) as *const i64;
+            let ptr33 = std::ptr::read(ptr2);
+            println!("index {x}: {ptr33}");
+        }
         let ptr2 = (f+8) as *const i64;
         let ptr33 = std::ptr::read(ptr2);
-        println!(" {:#?}, {:#?}, {:#?}, {}",ptr2,f,ptr3, ptr33);
+        println!(" const i64: {:#?}, ret: {:#?}, data: {:#?}, data+8: {}",ptr2,f,ptr3, ptr33);
+
+        println!("{a}");
     };
 }
 
