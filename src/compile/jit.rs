@@ -3,23 +3,22 @@ use std::collections::HashMap;
 use std::mem;
 
 use crate::parser::ast::{self, Node};
-use cranelift::codegen::ir::{DataFlowGraph, FuncRef, UserFuncName};
-use cranelift::codegen::packed_option::ReservedValue;
+use cranelift::codegen::ir::{ FuncRef, UserFuncName};
 use cranelift::codegen::{
     ir::{types::I64, AbiParam, Function, Signature},
     isa::CallConv,
 };
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift::prelude::types::R64;
+
 use cranelift::prelude::{
-    types, Block, Configurable, EntityRef, ExtFuncData, InstBuilder, MemFlags, Type, Value,
+    types, Configurable, EntityRef, InstBuilder, Type, Value,
     Variable,
 };
 
-use core::fmt::write;
+
 use cranelift::codegen::{isa, settings, Context};
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataContext, FuncId, Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module};
 use target_lexicon::Triple;
 
 
@@ -177,7 +176,7 @@ fn compile_code(
                                     let addr_size = builder.ins().iadd_imm(num, -8);
                                     builder.ins().call_indirect(poke_sig, poke_addr, &[addr_size, varval]);
                                     let mut addr = num;
-
+                                    //TODO: this looks stupid in code any better way of doing it? 
                                     for x in 0..a.len(){                                    
                                         let varval = builder.ins().iconst(I64, a[x].unwrap_int());
                                         //TODO                                                            ^^^ change to an internal unwrap_value

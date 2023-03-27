@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::parser::{self, execute};
-use cranelift::prelude::{Value, isa::Builder, types::I64, FunctionBuilder, InstBuilder, Variable};
+use cranelift::{prelude::{Value, isa::Builder, types::I64, FunctionBuilder, InstBuilder, Variable}, codegen::ir::VariableArgs};
 use openfile;
 use pest::Parser;
 use pest_derive::Parser;
@@ -91,6 +91,9 @@ pub enum Node {
     },
     Nop,
 }
+
+//TODO? possibly change all the use of vars to just a hashmap but that hashmap can then dynamically change to 
+//TODO? <String, Variables> for jit and <String, Node> for execute
 impl Node {
     pub fn unwrap_fun(&self) -> (Vec<Node>, Vec<Node>) {
         match self {
@@ -106,6 +109,10 @@ impl Node {
                 panic!("Not an array {:?}", a);
             }
         }
+    }
+    //TODO: actually make this function
+    pub fn unwrap_value(&self, vars: HashMap<String, Variable>)->Value{
+        todo!()
     }
 
     pub fn unwrap_var(&self, vars: &mut parser::execute::Vars) -> Box<Node> {
