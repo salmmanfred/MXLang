@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::mem;
 
 use crate::parser::ast::{self, Node};
-use cranelift::codegen::ir::{ FuncRef, UserFuncName};
+use cranelift::codegen::ir::{ FuncRef, UserFuncName, SigRef};
 use cranelift::codegen::{
     ir::{types::I64, AbiParam, Function, Signature},
     isa::CallConv,
@@ -20,6 +20,74 @@ use cranelift::codegen::{isa, settings, Context};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
 use target_lexicon::Triple;
+
+
+struct IntFunction{
+    pub malloc_sig: SigRef,
+    pub malloc_addr: Value,
+
+    pub poke_sig: SigRef,
+    pub poke_addr: Value,
+
+    pub  peek_sig: SigRef,
+    pub peek_addr: Value,
+
+}
+impl IntFunction{
+    pub fn new(builder: &mut FunctionBuilder, pointer: Type)->Self{
+    //TODO: This also in a better way
+    let (malloc_sig, malloc_addr) = {
+        let mut malloc_sig = Signature::new(CallConv::SystemV);
+        malloc_sig.params.push(AbiParam::new(types::I64));
+        
+
+        malloc_sig.returns.push(AbiParam::new(I64));
+        let write_sig = builder.import_signature(malloc_sig);
+
+        let malloc_addr = malloc as *const () as i64;
+        let malloc_addr = builder.ins().iconst(pointer, malloc_addr);
+        (write_sig, malloc_addr)
+    };
+    let (poke_sig, poke_addr) = {
+        // ! when chaning these dont forget to change the function
+        let mut malloc_sig = Signature::new(CallConv::SystemV);
+        malloc_sig.params.push(AbiParam::new(types::I64));
+        malloc_sig.params.push(AbiParam::new(types::I64));
+
+
+    
+        let write_sig = builder.import_signature(malloc_sig);
+
+        let malloc_addr = poke as *const () as i64;
+        let malloc_addr = builder.ins().iconst(pointer, malloc_addr);
+        (write_sig, malloc_addr)
+    };
+    let (peek_sig, peek_addr) = {
+        // ! when chaning these dont forget to change the function
+        let mut malloc_sig = Signature::new(CallConv::SystemV);
+        malloc_sig.params.push(AbiParam::new(types::I64));
+    
+
+
+        malloc_sig.returns.push(AbiParam::new(I64));
+        let write_sig = builder.import_signature(malloc_sig);
+
+        let malloc_addr = peek as *const () as i64;
+        let malloc_addr = builder.ins().iconst(pointer, malloc_addr);
+        (write_sig, malloc_addr)
+    };
+    Self { malloc_sig, 
+        malloc_addr, 
+        poke_sig, 
+        poke_addr, 
+        peek_sig, 
+        peek_addr}
+
+
+    }
+
+    
+}
 
 
 
@@ -45,6 +113,10 @@ unsafe extern "sysv64" fn peek(addr: i64)->i64{
     *(addr as *mut i64)
 }
 
+
+
+
+
 fn compile_code(
     code: Vec<Node>,
     module: &mut JIT,
@@ -54,47 +126,7 @@ fn compile_code(
     arrays: &mut HashMap<String, i64>,
 ) {
 
-    //TODO: This also in a better way
-    let (mallocsig, malloc_addr) = {
-        let mut malloc_sig = Signature::new(CallConv::SystemV);
-        malloc_sig.params.push(AbiParam::new(types::I64));
-        
-
-        malloc_sig.returns.push(AbiParam::new(I64));
-        let write_sig = builder.import_signature(malloc_sig);
-
-        let malloc_addr = malloc as *const () as i64;
-        let malloc_addr = builder.ins().iconst(module.pointer_type, malloc_addr);
-        (write_sig, malloc_addr)
-    };
-    let (poke_sig, poke_addr) = {
-        // ! when chaning these dont forget to change the function
-        let mut malloc_sig = Signature::new(CallConv::SystemV);
-        malloc_sig.params.push(AbiParam::new(types::I64));
-        malloc_sig.params.push(AbiParam::new(types::I64));
-
-
-       
-        let write_sig = builder.import_signature(malloc_sig);
-
-        let malloc_addr = poke as *const () as i64;
-        let malloc_addr = builder.ins().iconst(module.pointer_type, malloc_addr);
-        (write_sig, malloc_addr)
-    };
-    let (peek_sig, peek_addr) = {
-        // ! when chaning these dont forget to change the function
-        let mut malloc_sig = Signature::new(CallConv::SystemV);
-        malloc_sig.params.push(AbiParam::new(types::I64));
-       
-
-
-        malloc_sig.returns.push(AbiParam::new(I64));
-        let write_sig = builder.import_signature(malloc_sig);
-
-        let malloc_addr = peek as *const () as i64;
-        let malloc_addr = builder.ins().iconst(module.pointer_type, malloc_addr);
-        (write_sig, malloc_addr)
-    };
+   let memfun = IntFunction::new(builder, module.pointer_type);
 
     for x in code {
         match x {
@@ -170,17 +202,17 @@ fn compile_code(
 
                                     let varval = builder.ins().iconst(I64, a.len() as i64 +8);
                                     println!("{}",a.len() as i64 as usize);
-                                    let num = builder.ins().call_indirect(mallocsig, malloc_addr, &[varval]);
+                                    let num = builder.ins().call_indirect(memfun.malloc_sig, memfun.malloc_addr, &[varval]);
                                     let num = builder.func.dfg.inst_results(num)[0];
                                     // Store the size 
                                     let addr_size = builder.ins().iadd_imm(num, -8);
-                                    builder.ins().call_indirect(poke_sig, poke_addr, &[addr_size, varval]);
+                                    builder.ins().call_indirect(memfun.poke_sig, memfun.poke_addr, &[addr_size, varval]);
                                     let mut addr = num;
                                     //TODO: this looks stupid in code any better way of doing it? 
-                                    for x in 0..a.len(){                                    
-                                        let varval = builder.ins().iconst(I64, a[x].unwrap_int());
-                                        //TODO                                                            ^^^ change to an internal unwrap_value
-                                        builder.ins().call_indirect(poke_sig, poke_addr, &[addr, varval]);
+                                    for x in 0..a.len(){                   
+                                        let varval = a[x].unwrap_value(variables,builder);                 
+                                      
+                                        builder.ins().call_indirect(memfun.poke_sig, memfun.poke_addr, &[addr, varval]);
                                         addr = builder.ins().iadd_imm(addr, 8);
                                         println!("e");
 
@@ -221,12 +253,14 @@ fn compile_code(
 
                                     let var = variables.get(&a).unwrap();
                                     let varval = builder.use_var(*var);
-                                    let addr  =builder.ins().iadd_imm(varval, b.unwrap_int()*8);
-                                    //TODO                                                  ^^^ change to an internal unwrap_value
+                                    let val = b.unwrap_value(variables, builder);
+                                    let val = builder.ins().imul_imm(val, 8);
+                                    let addr  =builder.ins().iadd(varval, val);
+                                    
 
-                                    let num = builder.ins().call_indirect(peek_sig, peek_addr, &[addr]);
+                                    let num = builder.ins().call_indirect(memfun.peek_sig, memfun.peek_addr, &[addr]);
                                     let num = builder.func.dfg.inst_results(num)[0];
-
+                                    
                                     let var = Variable::new(module.varid());
 
                                     builder.declare_var(var, module.pointer_type);
@@ -255,10 +289,7 @@ fn compile_code(
                                     println!("aa{:#?}", args);
                                     for x in args.clone() {
                                         match x {
-                                            Node::Int(_) => arg_typ.push(I64),
-                                            Node::Var(_) => {
-                                                arg_typ.push(I64);
-                                            }
+                                            Node::Int(_) | Node::Var(_) => arg_typ.push(I64),  
                                             _ => {}
                                         }
                                     }

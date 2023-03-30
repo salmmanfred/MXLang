@@ -111,8 +111,26 @@ impl Node {
         }
     }
     //TODO: actually make this function
-    pub fn unwrap_value(&self, vars: HashMap<String, Variable>)->Value{
-        todo!()
+    pub fn unwrap_value(&self, variables: &mut HashMap<String, Variable>, builder: &mut FunctionBuilder)->Value{
+
+        match self{
+            Node::Var(a) =>{
+                let var = *variables.get(a).unwrap();
+                builder.use_var(var)
+            }
+            Node::Int(a) =>{
+                builder.ins().iconst(I64, *a)
+            }
+            Node::GetArray(a, b) =>{
+                todo!()
+            }
+            Node::String(a) =>{
+                panic!("String not impl");
+            }
+            _=>{ todo!()}
+        }
+
+       
     }
 
     pub fn unwrap_var(&self, vars: &mut parser::execute::Vars) -> Box<Node> {
