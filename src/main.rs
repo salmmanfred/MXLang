@@ -9,7 +9,7 @@ extern crate pest_derive;
 
 fn main() {
     //parser::execute::execute_code();
-   
+
     compile::jit::test_compile2(parser::ast::gen("./test.MXLA"))
 
     //TODO: libraries import!("file.file") (done)

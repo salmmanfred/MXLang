@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use crate::parser::{self, execute};
-use cranelift::{prelude::{Value, isa::Builder, types::I64, FunctionBuilder, InstBuilder, Variable}, codegen::ir::VariableArgs};
+use cranelift::{
+    codegen::ir::VariableArgs,
+    prelude::{isa::Builder, types::I64, FunctionBuilder, InstBuilder, Value, Variable},
+};
 use openfile;
 use pest::Parser;
 use pest_derive::Parser;
@@ -92,7 +95,7 @@ pub enum Node {
     Nop,
 }
 
-//TODO? possibly change all the use of vars to just a hashmap but that hashmap can then dynamically change to 
+//TODO? possibly change all the use of vars to just a hashmap but that hashmap can then dynamically change to
 //TODO? <String, Variables> for jit and <String, Node> for execute
 impl Node {
     pub fn unwrap_fun(&self) -> (Vec<Node>, Vec<Node>) {
@@ -111,26 +114,27 @@ impl Node {
         }
     }
     //TODO: actually make this function
-    pub fn unwrap_value(&self, variables: &mut HashMap<String, Variable>, builder: &mut FunctionBuilder)->Value{
-
-        match self{
-            Node::Var(a) =>{
+    pub fn unwrap_value(
+        &self,
+        variables: &mut HashMap<String, Variable>,
+        builder: &mut FunctionBuilder,
+    ) -> Value {
+        match self {
+            Node::Var(a) => {
                 let var = *variables.get(a).unwrap();
                 builder.use_var(var)
             }
-            Node::Int(a) =>{
-                builder.ins().iconst(I64, *a)
-            }
-            Node::GetArray(a, b) =>{
+            Node::Int(a) => builder.ins().iconst(I64, *a),
+            Node::GetArray(a, b) => {
                 todo!()
             }
-            Node::String(a) =>{
+            Node::String(a) => {
                 panic!("String not impl");
             }
-            _=>{ todo!()}
+            _ => {
+                todo!()
+            }
         }
-
-       
     }
 
     pub fn unwrap_var(&self, vars: &mut parser::execute::Vars) -> Box<Node> {
@@ -282,7 +286,7 @@ impl Node {
             }
         }
     }
-    
+
     pub fn check_var_empt(&self) -> bool {
         match self {
             Node::Var(a) => {
@@ -294,7 +298,11 @@ impl Node {
             _ => return false,
         }
     }
-    pub fn get_var_if_jit(&self, variables: &mut HashMap<String, Variable>,builder: &mut FunctionBuilder)->Value{
+    pub fn get_var_if_jit(
+        &self,
+        variables: &mut HashMap<String, Variable>,
+        builder: &mut FunctionBuilder,
+    ) -> Value {
         match self {
             Node::Int(a) => builder.ins().iconst(I64, *a),
             Node::Var(a) => builder.use_var(*variables.get(a).unwrap()),
