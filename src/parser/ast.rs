@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::{self, execute};
+use crate::{parser::{self, execute}, compile::jit::Types};
 use cranelift::{
     codegen::ir::VariableArgs,
     prelude::{isa::Builder, types::I64, FunctionBuilder, InstBuilder, Value, Variable},
@@ -113,18 +113,17 @@ impl Node {
             }
         }
     }
-    //TODO: actually make this function
-    pub fn unwrap_value(
-        &self,
-        variables: &mut HashMap<String, Variable>,
-        builder: &mut FunctionBuilder,
-    ) -> Value {
+
+    fn unwrap_backend(&self,
+        variables: &mut HashMap<String, (Variable,Types)>,
+        builder: &mut FunctionBuilder,) ->(Value,Types)
+    {
         match self {
             Node::Var(a) => {
                 let var = *variables.get(a).unwrap();
-                builder.use_var(var)
+                (builder.use_var(var.0),var.1)
             }
-            Node::Int(a) => builder.ins().iconst(I64, *a),
+            Node::Int(a) => (builder.ins().iconst(I64, *a),Types::Int),
             Node::GetArray(a, b) => {
                 todo!()
             }
@@ -136,6 +135,25 @@ impl Node {
             }
         }
     }
+    pub fn unwrap_value(
+        &self,
+        variables: &mut HashMap<String, (Variable,Types)>,
+        builder: &mut FunctionBuilder,
+    ) -> Value {
+       return self.unwrap_backend(variables, builder).0
+    }
+    pub fn unwrap_value_int(
+        &self,
+        variables: &mut HashMap<String, (Variable,Types)>,
+        builder: &mut FunctionBuilder,
+    ) ->Value {
+        let vt = self.unwrap_backend(variables, builder);
+        if let Types::Int = vt.1{
+            return vt.0
+        }
+        panic!("not an int")
+    }
+   
 
     pub fn unwrap_var(&self, vars: &mut parser::execute::Vars) -> Box<Node> {
         match self {
@@ -300,12 +318,19 @@ impl Node {
     }
     pub fn get_var_if_jit(
         &self,
-        variables: &mut HashMap<String, Variable>,
+        variables: &mut HashMap<String, (Variable, crate::compile::jit::Types)>,
         builder: &mut FunctionBuilder,
     ) -> Value {
         match self {
             Node::Int(a) => builder.ins().iconst(I64, *a),
-            Node::Var(a) => builder.use_var(*variables.get(a).unwrap()),
+            Node::Var(a) => {
+                let v = *variables.get(a).unwrap();
+                if let Types::Int = v.1{
+                return builder.use_var(v.0)
+
+                }
+                panic!("Wrong type {:#?}", v.1)
+            },
             _ => {
                 todo!()
             }

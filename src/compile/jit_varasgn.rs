@@ -11,11 +11,13 @@ use cranelift::prelude::{EntityRef, InstBuilder, Type, Value};
 
 use cranelift_module::Module;
 
+use super::jit::Types;
+
 pub fn op_asgn(
     op: ast::Op,
     name: String,
     asgn: Box<Node>,
-    variables: &mut HashMap<String, Variable>,
+    variables: &mut HashMap<String, (Variable,Types)>,
     funcs: &mut HashMap<String, FuncRef>,
     builder: &mut FunctionBuilder,
     module: &mut super::jit::JIT,
@@ -30,11 +32,20 @@ pub fn op_asgn(
                 println!(" asg {:#?}",asgn);
                 match *asgn{
                     Node::Var(_) | Node::Int(_) =>{
-                        let v = builder.use_var(*variables.get(&name).unwrap());
+                        let v = *variables.get(&name).unwrap();
+                        match v.1{
+                            Types::Int=>{
+                                 let v1 = builder.use_var(v.0.clone());
 
-                        let v2 = asgn.unwrap_value(variables, builder);
-                        let num_plus_v = builder.ins().iadd(v, v2);
-                        builder.def_var(*variables.get(&name).unwrap(), num_plus_v);
+                                let v2 = asgn.unwrap_value(variables, builder);
+                                let num_plus_v = builder.ins().iadd(v1, v2);
+                                builder.def_var(v.0, num_plus_v);
+                            }
+                            Types::Array =>{
+                                todo!()
+                            }
+                        }
+                       
                     }
                     _=>{
                         panic!("Add plus for arrays")
@@ -53,7 +64,7 @@ pub fn op_asgn(
 pub fn op_asgn_eq(
     name: String,
     asgn: Box<Node>,
-    variables: &mut HashMap<String, Variable>,
+    variables: &mut HashMap<String, (Variable,Types)>,
     funcs: &mut HashMap<String, FuncRef>,
     builder: &mut FunctionBuilder,
     module: &mut super::jit::JIT,
@@ -70,7 +81,7 @@ pub fn op_asgn_eq(
 
             let num = builder.ins().iconst(I64, a);
             builder.def_var(var, num);
-            variables.insert(name, var);
+            variables.insert(name, (var,Types::Int));
         }
         Node::Array(a) => {
             // An idea is to add before len an address to a continuation of the array
@@ -98,7 +109,9 @@ pub fn op_asgn_eq(
             let mut addr = num;
             //TODO: this looks stupid in code any better way of doing it?
             for x in 0..a.len() {
-                let varval = a[x].unwrap_value(variables, builder);
+                
+
+                let varval = a[x].unwrap_value_int(variables, builder);
 
                 builder
                     .ins()
@@ -112,14 +125,19 @@ pub fn op_asgn_eq(
             builder.declare_var(var, module.pointer_type);
 
             builder.def_var(var, num);
-            variables.insert(name.clone(), var);
+            variables.insert(name.clone(), (var,Types::Array));
         }
 
         Node::GetArray(a, b) => {
             //TODO: Add checking if the memory pointer is outside of the array lenght
 
             let var = variables.get(&a).unwrap();
-            let varval = builder.use_var(*var);
+            let varval = if let Types::Array = var.1{
+                builder.use_var(var.0)
+
+            }else{
+                panic!("must be array");
+            };
             let val = b.unwrap_value(variables, builder);
             let val = builder.ins().imul_imm(val, 8);
             let addr = builder.ins().iadd(varval, val);
@@ -134,18 +152,18 @@ pub fn op_asgn_eq(
             builder.declare_var(var, module.pointer_type);
 
             builder.def_var(var, num);
-            variables.insert(name.clone(), var);
+            variables.insert(name.clone(), (var,Types::Int));
         }
         
         Node::Var(a) => {
-            let var = variables.get(&a).unwrap();
-            let varval = builder.use_var(*var);
+            let var1 = variables.get(&a).unwrap();
+            let varval = builder.use_var(var1.0);
 
             let var = Variable::new(module.varid());
 
             builder.declare_var(var, module.pointer_type);
             builder.def_var(var, varval);
-            variables.insert(name, var);
+            variables.insert(name, (var,var1.1));
         }
         Node::Function { args, insides } => {
             // TODO: add return somehow
@@ -200,8 +218,8 @@ pub fn op_asgn_eq(
             let ins = builder.ins().call(func, &argsval);
             let num = builder.func.dfg.inst_results(ins)[0];
 
-            builder.def_var(var, num);
-            variables.insert(name_alt, var);
+            builder.def_var(var, num); 
+            variables.insert(name_alt, (var,Types::Int));//todo: determin the type automatically
         }
         _ => {
             todo!()

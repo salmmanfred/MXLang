@@ -18,6 +18,12 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
 use target_lexicon::Triple;
 
+
+#[derive(Debug,Copy,Clone)]
+pub enum Types{
+    Int,
+    Array,
+}
 pub struct IntFunction {
     pub malloc_sig: SigRef,
     pub malloc_addr: Value,
@@ -101,7 +107,7 @@ fn compile_code(
     code: Vec<Node>,
     module: &mut JIT,
     builder: &mut FunctionBuilder,
-    variables: &mut HashMap<String, Variable>,
+    variables: &mut HashMap<String, (Variable,Types)>,
     funcs: &mut HashMap<String, FuncRef>,
     arrays: &mut HashMap<String, i64>,
 ) {
@@ -183,7 +189,7 @@ pub fn function_compiler_handler(
     builder.append_block_params_for_function_params(entryblock);
     builder.switch_to_block(entryblock);
 
-    let mut variables: HashMap<String, Variable> = HashMap::new();
+    let mut variables: HashMap<String, (Variable,Types)> = HashMap::new();
     let mut funcs: HashMap<String, FuncRef> = HashMap::new();
     let mut arrays: HashMap<String, i64> = HashMap::new();
 
@@ -195,7 +201,8 @@ pub fn function_compiler_handler(
 
             let num = argin;
             builder.def_var(var, num);
-            variables.insert(name.to_string(), var);
+            //TODO: determen type better
+            variables.insert(name.to_string(), (var,Types::Int));
         }
     }
 
@@ -209,8 +216,8 @@ pub fn function_compiler_handler(
     );
     //println!("vars: {:#?}",variables);
     if TEMPARG {
-        let v = builder.use_var(*variables.get("y").unwrap());
-        let v2 = builder.use_var(*variables.get("arr").unwrap());
+        let v = builder.use_var(variables.get("y").unwrap().0);
+        let v2 = builder.use_var(variables.get("arr").unwrap().0);
 
         builder.ins().return_(&[v2, v]);
     } else {
@@ -243,7 +250,7 @@ pub fn test_compile2(code_snip: Vec<ast::Node>) {
             mem::transmute::<_, unsafe extern "sysv64" fn() -> (i64, i64)>(code);
         // unsafe extern "sysv64" fn(usize) ->usize
         let (f, a) = code_fn();
-
+        drop(code_fn);
         // let ptraddr1: *mut  i64 =  f;
         //let ptr3 = std::ptr::read(f);
 
@@ -335,3 +342,4 @@ impl JIT {
         (id, ctx)
     }
 }
+
